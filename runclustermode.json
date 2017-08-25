@@ -1,0 +1,9 @@
+{
+    "apps" : [{
+      "script"    : "index.js",
+      "instances" : "max",
+      "exec_mode" : "cluster"
+    }]
+  }
+  // pm2 start processes.json
+  // or pm2 start index.js -i max
