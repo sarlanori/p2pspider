@@ -4,14 +4,12 @@ var P2PSpider = require('./lib');
 var sqlite3 = require('sqlite3').verbose();
 var infoDb = new sqlite3.Database('torrent.db');
 var crawledCount = 0;
-var cacheSize = 100;
-var dataCache = [];
 
 var p2p = P2PSpider({
     //nodesMaxSize: 200,   // be careful
     //maxConnections: 400, // be careful
     nodesMaxSize: 400,
-    maxConnections: 400,
+    maxConnections: 600,
     timeout: 10000
 });
 
@@ -97,15 +95,6 @@ function get_files_byte_length(files) {
     return totalLength;
 }
 
-function isCacheDataExists(data) {
-    for (var i = 0; i < dataCache.length; i++) {
-        if (dataCache[i].infohash == data.infohash) {
-            return true;
-        }
-    }
-    return false;
-}
-
 function save_metadata(metadata) {
     var data = {};
     data.magnet = metadata.magnet;
@@ -139,36 +128,17 @@ function save_metadata(metadata) {
                 console.log('Save metadata failed: ' + err);
                 return;
             }
-            if (rows.length > 0 || isCacheDataExists(data)) {
+            if (rows.length > 0) {
                 console.log(data.infohash + ' exists.');
             } else {
-                dataCache.push(data);
+                var stmt = infoDb.prepare("insert into torrent_info values(?,?,?,?,?,?)");
+                var buf = encode_files(data.files);
+                stmt.run(data.infohash, data.name, data.magnet, data.totalLength, buf, data.fetchedAt);
+                stmt.finalize(function () {
+                    crawledCount++;
+                    console.log('[' + new Date().toLocaleString() + ']' + '[' + crawledCount + ']' + data.name + ' saved.');
+                });
 
-                crawledCount++;
-                console.log('[' + new Date().toLocaleString() + ']' + '[' + crawledCount + ']' + data.name + ' cached.');
-
-                if (dataCache.length >= cacheSize) {
-                    /*
-                    var stmt = infoDb.prepare("insert into torrent_info values(?,?,?,?,?,?)");
-                    //var buf = encode_files(data.files);
-                    stmt.run(data.infohash, data.name, data.magnet, data.totalLength, buf, data.fetchedAt);
-                    stmt.finalize(function () {
-                        crawledCount++;
-                        console.log('[' + new Date().toLocaleString() + ']' + '[' + crawledCount + ']' + data.name + ' saved.');
-                    });
-                    */
-                    infoDb.run("BEGIN TRANSACTION");
-                    dataCache.forEach(function (cacheData) {
-                        var buf = encode_files(cacheData.files);
-                        infoDb.run("insert into torrent_info values(?,?,?,?,?,?)",
-                            [cacheData.infohash, cacheData.name, cacheData.magnet, cacheData.totalLength, buf, cacheData.fetchedAt]);
-                    });
-                    infoDb.run("END");
-
-                    dataCache.length = 0; //清空缓存数组
-
-                    console.log('[' + new Date().toLocaleString() + ']' + 'Saved ' + cacheSize + " data to database.");
-                }
                 /*
                 var buf = encode_files(data.files);
                 var stmt2 = fileDb.prepare("insert into torrent_files values(?,?)");
